@@ -4,6 +4,7 @@ from django.utils.text import slugify
 from django.core.validators import MinValueValidator
 from decimal import Decimal
 
+
 class Categoria(models.Model):
     nome = models.CharField(max_length=100, unique=True, verbose_name="Nome")
     slug = models.SlugField(max_length=100, unique=True, verbose_name="Slug")
@@ -13,6 +14,12 @@ class Categoria(models.Model):
     ordem = models.IntegerField(default=0, help_text="Ordem de exibição", verbose_name="Ordem")
     criado_em = models.DateTimeField(auto_now_add=True, verbose_name="Criado em")
     atualizado_em = models.DateTimeField(auto_now=True, verbose_name="Atualizado em")
+
+    def save(self, *args, **kwargs):
+        # Gera slug automaticamente se não existir
+        if not self.slug:
+            self.slug = slugify(self.nome)
+        super().save(*args, **kwargs)
 
     class Meta:
         verbose_name = "Categoria"
@@ -119,6 +126,37 @@ class Produto(models.Model):
     # Timestamps
     criado_em = models.DateTimeField(auto_now_add=True, verbose_name="Criado em")
     atualizado_em = models.DateTimeField(auto_now=True, verbose_name="Atualizado em")
+
+    def save(self, *args, **kwargs):
+        """Gera slug automaticamente baseado no nome se não existir"""
+        if not self.slug:
+            base_slug = slugify(self.nome)
+            slug = base_slug
+            counter = 1
+
+            # Garante que o slug seja único
+            while Produto.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                slug = f"{base_slug}-{counter}"
+                counter += 1
+
+            self.slug = slug
+
+        super().save(*args, **kwargs)
+
+    @property
+    def preco_final(self):
+        """Retorna o preço promocional se existir, senão o preço normal"""
+        return self.preco_promocional if self.preco_promocional else self.preco
+
+    @property
+    def tem_estoque(self):
+        """Verifica se há estoque disponível"""
+        return self.estoque > 0
+
+    @property
+    def estoque_baixo(self):
+        """Verifica se o estoque está abaixo do mínimo"""
+        return self.estoque <= self.estoque_minimo
 
     class Meta:
         ordering = ['-criado_em']
