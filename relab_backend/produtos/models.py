@@ -1,4 +1,3 @@
-# produtos/models.py
 from django.db import models
 from django.utils.text import slugify
 from django.core.validators import MinValueValidator
@@ -20,6 +19,11 @@ class Categoria(models.Model):
         if not self.slug:
             self.slug = slugify(self.nome)
         super().save(*args, **kwargs)
+
+    @property
+    def total_produtos(self):
+        """Retorna o total de produtos ativos na categoria"""
+        return self.produtos.filter(ativo=True, disponivel=True).count()
 
     class Meta:
         verbose_name = "Categoria"
@@ -157,6 +161,24 @@ class Produto(models.Model):
     def estoque_baixo(self):
         """Verifica se o estoque está abaixo do mínimo"""
         return self.estoque <= self.estoque_minimo
+
+    @property
+    def em_promocao(self):
+        """Verifica se o produto está em promoção"""
+        return self.preco_promocional is not None and self.preco_promocional < self.preco
+
+    @property
+    def desconto_percentual(self):
+        """Calcula o percentual de desconto"""
+        if not self.em_promocao:
+            return 0
+        desconto = ((self.preco - self.preco_promocional) / self.preco) * 100
+        return round(desconto, 2)
+
+    @property
+    def disponivel_venda(self):
+        """Verifica se o produto está disponível para venda"""
+        return self.ativo and self.disponivel and self.tem_estoque
 
     class Meta:
         ordering = ['-criado_em']

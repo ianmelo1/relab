@@ -4,15 +4,19 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.utils import timezone
 from .models import Usuario, Endereco
+from rest_framework_simplejwt.views import TokenObtainPairView
 from .serializers import (
     UsuarioListSerializer,
     UsuarioDetailSerializer,
     UsuarioCreateSerializer,
     UsuarioUpdateSerializer,
     AlterarSenhaSerializer,
-    EnderecoSerializer
+    EnderecoSerializer,
+    CustomTokenObtainPairSerializer,
 )
 
+class CustomTokenObtainPairView(TokenObtainPairView):
+    serializer_class = CustomTokenObtainPairSerializer
 
 class IsOwnerOrAdmin(permissions.BasePermission):
     """

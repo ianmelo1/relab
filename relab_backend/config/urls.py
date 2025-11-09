@@ -7,6 +7,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/produtos/', include('produtos.urls')),
     path('api/', include('usuarios.urls')),
+    path('api/carrinho/', include('carrinho.urls')),
 ]
 
 # Servir arquivos de mídia em desenvolvimento

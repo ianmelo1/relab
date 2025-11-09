@@ -1,6 +1,12 @@
 from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import Usuario, Endereco
+
+
+# ✅ Serializer customizado para JWT (usando email)
+class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    username_field = 'email'
 
 
 class EnderecoSerializer(serializers.ModelSerializer):
