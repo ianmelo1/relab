@@ -149,22 +149,29 @@ class EnderecoViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         """Cria um endereço vinculado ao usuário autenticado"""
+        # Verifica se já tem endereços
         tem_enderecos = Endereco.objects.filter(
             usuario=self.request.user,
             ativo=True
         ).exists()
 
+        # Se não tem nenhum, marca como padrão automaticamente
         padrao = serializer.validated_data.get('padrao', False)
         if not tem_enderecos:
             padrao = True
 
         serializer.save(usuario=self.request.user, padrao=padrao)
 
+    def perform_update(self, serializer):
+        """Atualiza endereço"""
+        serializer.save()
+
     def perform_destroy(self, instance):
         """Soft delete do endereço"""
         instance.ativo = False
         instance.save()
 
+        # Se era o padrão, marca outro como padrão
         if instance.padrao:
             outro_endereco = Endereco.objects.filter(
                 usuario=self.request.user,
@@ -180,11 +187,13 @@ class EnderecoViewSet(viewsets.ModelViewSet):
         """Marca um endereço como padrão"""
         endereco = self.get_object()
 
+        # Desmarca todos os outros
         Endereco.objects.filter(
             usuario=request.user,
             padrao=True
         ).update(padrao=False)
 
+        # Marca este como padrão
         endereco.padrao = True
         endereco.save()
 

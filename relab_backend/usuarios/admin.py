@@ -21,8 +21,8 @@ class UsuarioAdmin(BaseUserAdmin):
         'foto_thumb',
         'email',
         'get_full_name',
-        'cpf',
-        'telefone',
+        'cpf_formatado',
+        'telefone_formatado',
         'tipo_usuario',
         'status_display',
         'total_enderecos',
@@ -54,7 +54,9 @@ class UsuarioAdmin(BaseUserAdmin):
         'atualizado_em',
         'ultimo_acesso',
         'foto_preview',
-        'total_enderecos'
+        'total_enderecos',
+        'cpf_formatado',
+        'telefone_formatado'
     ]
 
     inlines = [EnderecoInline]
@@ -67,8 +69,8 @@ class UsuarioAdmin(BaseUserAdmin):
             'fields': (
                 'first_name',
                 'last_name',
-                'cpf',
-                'telefone',
+                ('cpf', 'cpf_formatado'),
+                ('telefone', 'telefone_formatado'),
                 'data_nascimento',
                 'foto_perfil',
                 'foto_preview'
@@ -187,6 +189,7 @@ class EnderecoAdmin(admin.ModelAdmin):
         'titulo',
         'usuario',
         'tipo',
+        'cep_formatado',
         'cidade',
         'estado',
         'padrao_display',
@@ -213,7 +216,7 @@ class EnderecoAdmin(admin.ModelAdmin):
         'cep'
     ]
 
-    readonly_fields = ['criado_em', 'atualizado_em', 'endereco_completo']
+    readonly_fields = ['criado_em', 'atualizado_em', 'endereco_completo', 'cep_formatado', 'telefone_contato_formatado']
 
     fieldsets = (
         ('Usuário', {
@@ -224,12 +227,12 @@ class EnderecoAdmin(admin.ModelAdmin):
                 'titulo',
                 'tipo',
                 'destinatario',
-                'telefone_contato'
+                ('telefone_contato', 'telefone_contato_formatado')
             )
         }),
         ('Endereço', {
             'fields': (
-                'cep',
+                ('cep', 'cep_formatado'),
                 'logradouro',
                 'numero',
                 'complemento',

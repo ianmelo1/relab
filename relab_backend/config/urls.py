@@ -8,6 +8,7 @@ urlpatterns = [
     path('api/produtos/', include('produtos.urls')),
     path('api/', include('usuarios.urls')),
     path('api/carrinho/', include('carrinho.urls')),
+    path('api/pedidos/', include('pedidos.urls')),
 ]
 
 # Servir arquivos de mídia em desenvolvimento

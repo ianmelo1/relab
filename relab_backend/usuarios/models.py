@@ -4,7 +4,32 @@ from django.core.validators import RegexValidator
 from django.utils.translation import gettext_lazy as _
 
 
+def formatar_cpf(cpf):
+    """Formata CPF: 12345678900 -> 123.456.789-00"""
+    cpf = ''.join(filter(str.isdigit, cpf))  # Remove tudo que não é número
+    if len(cpf) == 11:
+        return f'{cpf[:3]}.{cpf[3:6]}.{cpf[6:9]}-{cpf[9:]}'
+    return cpf
+
+def formatar_telefone(telefone):
+    """Formata telefone: 11987654321 -> (11) 98765-4321"""
+    telefone = ''.join(filter(str.isdigit, telefone))
+    if len(telefone) == 11:  # Celular
+        return f'({telefone[:2]}) {telefone[2:7]}-{telefone[7:]}'
+    elif len(telefone) == 10:  # Fixo
+        return f'({telefone[:2]}) {telefone[2:6]}-{telefone[6:]}'
+    return telefone
+
+def formatar_cep(cep):
+    """Formata CEP: 12345678 -> 12345-678"""
+    cep = ''.join(filter(str.isdigit, cep))
+    if len(cep) == 8:
+        return f'{cep[:5]}-{cep[5:]}'
+    return cep
+
+
 class Usuario(AbstractUser):
+
     """
     Modelo de usuário personalizado estendendo AbstractUser
     """
@@ -15,22 +40,22 @@ class Usuario(AbstractUser):
 
     email = models.EmailField(_('email'), unique=True)
     cpf = models.CharField(
-        max_length=14,
+        max_length=14,  # Só os números
         unique=True,
         validators=[
             RegexValidator(
-                regex=r'^\d{3}\.\d{3}\.\d{3}-\d{2}$',
-                message='CPF deve estar no formato: 000.000.000-00'
+                regex=r'^\d{11}$',
+                message='CPF deve conter 11 dígitos'
             )
         ],
         verbose_name='CPF'
     )
     telefone = models.CharField(
-        max_length=15,
+        max_length=16,  # Só os números (DDD + número)
         validators=[
             RegexValidator(
-                regex=r'^\(\d{2}\) \d{4,5}-\d{4}$',
-                message='Telefone deve estar no formato: (00) 00000-0000'
+                regex=r'^\d{10,11,16}$',
+                message='Telefone deve conter 10 ou 11 dígitos'
             )
         ],
         verbose_name='Telefone'
@@ -80,6 +105,16 @@ class Usuario(AbstractUser):
         """Verifica se o usuário é administrador"""
         return self.tipo_usuario == 'admin' or self.is_staff or self.is_superuser
 
+    def cpf_formatado(self):
+        """Retorna o CPF formatado: 123.456.789-00"""
+        return formatar_cpf(self.cpf)
+    cpf_formatado.short_description = 'CPF'
+
+    def telefone_formatado(self):
+        """Retorna o telefone formatado: (11) 98765-4321"""
+        return formatar_telefone(self.telefone)
+    telefone_formatado.short_description = 'Telefone'
+
 
 class Endereco(models.Model):
     """
@@ -113,11 +148,11 @@ class Endereco(models.Model):
 
     # CEP e localização
     cep = models.CharField(
-        max_length=9,
+        max_length=15,  # Só os números
         validators=[
             RegexValidator(
-                regex=r'^\d{5}-\d{3}$',
-                message='CEP deve estar no formato: 00000-000'
+                regex=r'^\d{15}$',
+                message='CEP deve conter 8 dígitos'
             )
         ],
         verbose_name='CEP'
@@ -146,8 +181,14 @@ class Endereco(models.Model):
         verbose_name='Destinatário'
     )
     telefone_contato = models.CharField(
-        max_length=15,
+        max_length=20,  # Só os números
         blank=True,
+        validators=[
+            RegexValidator(
+                regex=r'^\d{10,20}$',
+                message='Telefone deve conter 10 ou 11 dígitos'
+            )
+        ],
         help_text='Telefone para contato na entrega (opcional)',
         verbose_name='Telefone de Contato'
     )
@@ -199,4 +240,16 @@ class Endereco(models.Model):
     def endereco_completo(self):
         """Retorna o endereço formatado em uma linha"""
         complemento = f", {self.complemento}" if self.complemento else ""
-        return f"{self.logradouro}, {self.numero}{complemento} - {self.bairro}, {self.cidade}/{self.estado} - CEP: {self.cep}"
+        return f"{self.logradouro}, {self.numero}{complemento} - {self.bairro}, {self.cidade}/{self.estado} - CEP: {self.cep_formatado()}"
+
+    def cep_formatado(self):
+        """Retorna o CEP formatado: 12345-678"""
+        return formatar_cep(self.cep)
+    cep_formatado.short_description = 'CEP'
+
+    def telefone_contato_formatado(self):
+        """Retorna o telefone de contato formatado"""
+        if self.telefone_contato:
+            return formatar_telefone(self.telefone_contato)
+        return ''
+    telefone_contato_formatado.short_description = 'Telefone de Contato'
