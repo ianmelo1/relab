@@ -39,7 +39,7 @@ class Pedido(models.Model):
 
     # Informações do pedido
     numero = models.CharField(
-        max_length=20,
+        max_length=30,
         unique=True,
         editable=False,
         verbose_name='Número do Pedido'

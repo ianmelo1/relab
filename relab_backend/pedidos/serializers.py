@@ -123,7 +123,7 @@ class PedidoSerializer(serializers.ModelSerializer):
 
 
 class PedidoCreateSerializer(serializers.Serializer):
-    """Serializer para criar pedido"""
+    """Serializer para criar pedido MANUALMENTE (com itens)"""
     endereco_id = serializers.IntegerField()
     forma_pagamento = serializers.ChoiceField(choices=Pedido.FORMA_PAGAMENTO_CHOICES)
     itens = ItemPedidoCreateSerializer(many=True)
@@ -162,7 +162,7 @@ class PedidoCreateSerializer(serializers.Serializer):
             forma_pagamento=validated_data['forma_pagamento'],
             subtotal=subtotal,
             observacao=validated_data.get('observacao', ''),
-            frete=Decimal('0.00'),  # Calcular frete depois
+            frete=Decimal('0.00'),
             desconto=Decimal('0.00'),
         )
 
@@ -185,5 +185,90 @@ class PedidoCreateSerializer(serializers.Serializer):
             status='aguardando_pagamento',
             criado_por=usuario
         )
+
+        return pedido
+
+
+class PedidoFromCarrinhoSerializer(serializers.Serializer):
+    """Serializer para criar pedido a partir do carrinho"""
+    endereco_id = serializers.IntegerField()
+    forma_pagamento = serializers.ChoiceField(choices=Pedido.FORMA_PAGAMENTO_CHOICES)
+    observacao = serializers.CharField(required=False, allow_blank=True, default='')
+
+    def validate_endereco_id(self, value):
+        usuario = self.context['request'].user
+        try:
+            endereco = usuario.enderecos.get(id=value, ativo=True)
+            return value
+        except:
+            raise serializers.ValidationError("Endereço inválido ou não pertence ao usuário.")
+
+    def create(self, validated_data):
+        from decimal import Decimal
+        from django.utils import timezone
+        from carrinho.models import Carrinho
+
+        usuario = self.context['request'].user
+
+        # Busca o carrinho do usuário
+        try:
+            carrinho = Carrinho.objects.get(usuario=usuario)
+        except Carrinho.DoesNotExist:
+            raise serializers.ValidationError("Carrinho vazio ou não encontrado.")
+
+        # Verifica se tem itens
+        if not carrinho.itens.exists():
+            raise serializers.ValidationError("Carrinho está vazio.")
+
+        # Valida estoque de todos os itens
+        for item in carrinho.itens.all():
+            if not item.produto.disponivel_venda:
+                raise serializers.ValidationError(
+                    f"Produto '{item.produto.nome}' não está disponível."
+                )
+            if item.produto.estoque < item.quantidade:
+                raise serializers.ValidationError(
+                    f"Estoque insuficiente para '{item.produto.nome}'. "
+                    f"Disponível: {item.produto.estoque}"
+                )
+
+        # Calcula subtotal do carrinho
+        subtotal = carrinho.subtotal
+
+        # Cria o pedido
+        pedido = Pedido.objects.create(
+            usuario=usuario,
+            endereco_id=validated_data['endereco_id'],
+            forma_pagamento=validated_data['forma_pagamento'],
+            subtotal=subtotal,
+            observacao=validated_data.get('observacao', ''),
+            frete=Decimal('0.00'),
+            desconto=Decimal('0.00'),
+        )
+
+        # Cria os itens do pedido a partir do carrinho
+        for item_carrinho in carrinho.itens.all():
+            ItemPedido.objects.create(
+                pedido=pedido,
+                produto=item_carrinho.produto,
+                quantidade=item_carrinho.quantidade,
+                preco_unitario=item_carrinho.preco_unitario
+            )
+
+            # Atualiza estoque e vendas
+            produto = item_carrinho.produto
+            produto.estoque -= item_carrinho.quantidade
+            produto.vendas += item_carrinho.quantidade
+            produto.save()
+
+        # Cria registro no histórico
+        StatusPedido.objects.create(
+            pedido=pedido,
+            status='aguardando_pagamento',
+            criado_por=usuario
+        )
+
+        # LIMPA O CARRINHO
+        carrinho.limpar()
 
         return pedido

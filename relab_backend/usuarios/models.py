@@ -54,7 +54,7 @@ class Usuario(AbstractUser):
         max_length=16,  # Só os números (DDD + número)
         validators=[
             RegexValidator(
-                regex=r'^\d{10,11,16}$',
+                regex=r'^\d{10,11}$',
                 message='Telefone deve conter 10 ou 11 dígitos'
             )
         ],
@@ -151,7 +151,7 @@ class Endereco(models.Model):
         max_length=15,  # Só os números
         validators=[
             RegexValidator(
-                regex=r'^\d{15}$',
+                regex=r'^\d{8}$',
                 message='CEP deve conter 8 dígitos'
             )
         ],
@@ -185,7 +185,7 @@ class Endereco(models.Model):
         blank=True,
         validators=[
             RegexValidator(
-                regex=r'^\d{10,20}$',
+                regex=r'^\d{10,11}$',
                 message='Telefone deve conter 10 ou 11 dígitos'
             )
         ],

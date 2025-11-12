@@ -176,13 +176,18 @@ class UsuarioCreateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         """Cria um novo usuário"""
-        validated_data.pop('password_confirm')
+        # Remove os campos que vão como parâmetros
+        username = validated_data.pop('username')
+        email = validated_data.pop('email')
+        password = validated_data.pop('password')
+        validated_data.pop('password_confirm')  # Remove confirmação
 
+        # Cria o usuário
         usuario = Usuario.objects.create_user(
-            username=validated_data.pop('username'),
-            email=validated_data['email'],
-            password=validated_data.pop('password'),
-            **validated_data
+            username=username,
+            email=email,
+            password=password,
+            **validated_data  # Agora só tem os campos extras (cpf, telefone, etc)
         )
 
         return usuario

@@ -11,6 +11,7 @@ from .models import Pedido, StatusPedido
 from .serializers import (
     PedidoSerializer,
     PedidoCreateSerializer,
+    PedidoFromCarrinhoSerializer,  # 🔥 ADICIONE ESTE IMPORT
     StatusPedidoSerializer
 )
 
@@ -25,8 +26,6 @@ class PedidoViewSet(viewsets.ModelViewSet):
     search_fields = ['numero', 'usuario__email', 'usuario__first_name']
     ordering_fields = ['criado_em', 'total']
     ordering = ['-criado_em']
-
-    # 🔥 ADICIONE ESTA LINHA - Define o queryset padrão
     queryset = Pedido.objects.all()
 
     def get_queryset(self):
@@ -36,7 +35,6 @@ class PedidoViewSet(viewsets.ModelViewSet):
         """
         user = self.request.user
 
-        # 🔥 IMPORTANTE: Sempre retorne um queryset, nunca None
         if user.is_staff or user.tipo_usuario == 'admin':
             return Pedido.objects.all().select_related(
                 'usuario', 'endereco'
@@ -49,22 +47,47 @@ class PedidoViewSet(viewsets.ModelViewSet):
     def get_serializer_class(self):
         if self.action == 'create':
             return PedidoCreateSerializer
+        elif self.action == 'criar_do_carrinho':
+            return PedidoFromCarrinhoSerializer
         return PedidoSerializer
 
     def perform_create(self, serializer):
-        """
-        🔥 ADICIONE ESTE MÉTODO - Define o comportamento ao criar
-        """
+        """Define o comportamento ao criar"""
         pedido = serializer.save()
         return pedido
 
     def create(self, request, *args, **kwargs):
-        """Cria um novo pedido"""
+        """Cria um novo pedido MANUALMENTE"""
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         pedido = self.perform_create(serializer)
 
-        # Retorna o pedido criado com o serializer de leitura
+        return Response(
+            PedidoSerializer(pedido).data,
+            status=status.HTTP_201_CREATED
+        )
+
+    @action(detail=False, methods=['post'])
+    def criar_do_carrinho(self, request):
+        """
+        POST /api/pedidos/criar_do_carrinho/
+
+        Cria um pedido automaticamente a partir dos itens do carrinho
+
+        Body:
+        {
+            "endereco_id": 1,
+            "forma_pagamento": "pix",
+            "observacao": "Entregar no período da tarde"
+        }
+        """
+        serializer = PedidoFromCarrinhoSerializer(
+            data=request.data,
+            context={'request': request}
+        )
+        serializer.is_valid(raise_exception=True)
+        pedido = serializer.save()
+
         return Response(
             PedidoSerializer(pedido).data,
             status=status.HTTP_201_CREATED
@@ -91,10 +114,8 @@ class PedidoViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Atualiza o pedido
         pedido.status = novo_status
 
-        # Atualiza timestamps específicos
         if novo_status == 'pago' and not pedido.pago_em:
             pedido.pago_em = timezone.now()
         elif novo_status == 'enviado' and not pedido.enviado_em:
@@ -106,7 +127,6 @@ class PedidoViewSet(viewsets.ModelViewSet):
 
         pedido.save()
 
-        # Cria registro no histórico
         StatusPedido.objects.create(
             pedido=pedido,
             status=novo_status,
@@ -153,7 +173,6 @@ class PedidoViewSet(viewsets.ModelViewSet):
         """
         pedido = self.get_object()
 
-        # Verifica se o usuário é o dono ou admin
         if pedido.usuario != request.user and not (
                 request.user.is_staff or request.user.tipo_usuario == 'admin'
         ):
@@ -162,7 +181,6 @@ class PedidoViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        # Só pode cancelar se estiver aguardando pagamento
         if pedido.status != 'aguardando_pagamento':
             return Response(
                 {'error': 'Só é possível cancelar pedidos aguardando pagamento'},
@@ -175,12 +193,10 @@ class PedidoViewSet(viewsets.ModelViewSet):
             produto.estoque += item.quantidade
             produto.save()
 
-        # Atualiza pedido
         pedido.status = 'cancelado'
         pedido.cancelado_em = timezone.now()
         pedido.save()
 
-        # Registra no histórico
         StatusPedido.objects.create(
             pedido=pedido,
             status='cancelado',
