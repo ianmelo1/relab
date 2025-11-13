@@ -1,31 +1,20 @@
-from django.urls import path
+# carrinho/urls.py
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
 from .views import CarrinhoViewSet
 
-# Como estamos usando ViewSet, precisamos mapear manualmente as actions
-carrinho_list = CarrinhoViewSet.as_view({
-    'get': 'list',
-})
+app_name = 'carrinho'  # Namespace para reverse URLs
 
-carrinho_adicionar = CarrinhoViewSet.as_view({
-    'post': 'adicionar',
-})
-
-carrinho_atualizar = CarrinhoViewSet.as_view({
-    'patch': 'atualizar',
-})
-
-carrinho_remover = CarrinhoViewSet.as_view({
-    'delete': 'remover',
-})
-
-carrinho_limpar = CarrinhoViewSet.as_view({
-    'delete': 'limpar',
-})
+router = DefaultRouter()
+router.register(r'', CarrinhoViewSet, basename='carrinho')
 
 urlpatterns = [
-    path('', carrinho_list, name='carrinho'),
-    path('adicionar/', carrinho_adicionar, name='carrinho-adicionar'),
-    path('atualizar/<int:pk>/', carrinho_atualizar, name='carrinho-atualizar'),
-    path('remover/<int:pk>/', carrinho_remover, name='carrinho-remover'),
-    path('limpar/', carrinho_limpar, name='carrinho-limpar'),
+    path('', include(router.urls)),
 ]
+
+# URLs geradas com @action decorators no ViewSet:
+# GET    /api/v1/carrinho/                    - Ver carrinho
+# POST   /api/v1/carrinho/adicionar/          - Adicionar item
+# PATCH  /api/v1/carrinho/{id}/atualizar/     - Atualizar quantidade
+# DELETE /api/v1/carrinho/{id}/remover/       - Remover item
+# DELETE /api/v1/carrinho/limpar/             - Limpar carrinho

@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     'usuarios',
     'carrinho',
     'pedidos',
+    'pagamentos',
 ]
 
 MIDDLEWARE = [
@@ -126,6 +127,12 @@ TIME_ZONE = 'America/Sao_Paulo'
 USE_I18N = True
 USE_TZ = True
 
+# Credenciais Mercado Pago
+MERCADO_PAGO_ACCESS_TOKEN = os.getenv('MERCADO_PAGO_ACCESS_TOKEN', '')
+MERCADO_PAGO_PUBLIC_KEY = os.getenv('MERCADO_PAGO_PUBLIC_KEY', '')
+
+# URLs do site (para retorno do pagamento)
+SITE_URL = os.getenv('SITE_URL', 'http://localhost:3000')
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
