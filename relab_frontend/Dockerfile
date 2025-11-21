@@ -1,5 +1,5 @@
 # Imagem base Node
-FROM node:18-alpine
+FROM node:20-alpine
 
 # Diretório de trabalho
 WORKDIR /app
@@ -16,5 +16,5 @@ COPY . .
 # Expõe a porta 3000
 EXPOSE 3000
 
-# Inicia o app
-CMD ["npm", "start"]
+# Inicia o app em modo desenvolvimento
+CMD ["npm", "run", "dev"]

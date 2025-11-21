@@ -4,6 +4,8 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.conf import settings
 import mercadopago
+import hmac
+import hashlib
 
 from .models import Pagamento
 from .serializers import PagamentoSerializer, CriarPagamentoSerializer
@@ -15,7 +17,6 @@ class PagamentoViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        # Usuário só vê seus próprios pagamentos
         return Pagamento.objects.filter(pedido__usuario=self.request.user)
 
     @action(detail=False, methods=['post'])
@@ -29,10 +30,8 @@ class PagamentoViewSet(viewsets.ModelViewSet):
         pedido_id = serializer.validated_data['pedido_id']
 
         try:
-            # Buscar pedido
             pedido = Pedido.objects.get(id=pedido_id, usuario=request.user)
 
-            # Configurar SDK do Mercado Pago
             sdk = mercadopago.SDK(settings.MERCADO_PAGO_ACCESS_TOKEN)
 
             # Montar items do pedido
@@ -61,10 +60,9 @@ class PagamentoViewSet(viewsets.ModelViewSet):
                 "auto_return": "approved",
                 "statement_descriptor": "MEU ECOMMERCE",
                 "external_reference": str(pedido.id),
-                "notification_url": f"{settings.SITE_URL}/api/pagamentos/webhook/",
+                "notification_url": f"{settings.SITE_URL}/api/v1/pagamentos/webhook/",
             }
 
-            # Criar preferência no Mercado Pago
             preference_response = sdk.preference().create(preference_data)
             preference = preference_response["response"]
 
@@ -76,15 +74,14 @@ class PagamentoViewSet(viewsets.ModelViewSet):
                 dados_mercadopago=preference
             )
 
-            # Atualizar status do pedido
             pedido.status = 'aguardando_pagamento'
             pedido.save()
 
             return Response({
                 'pagamento_id': pagamento.id,
                 'preference_id': preference['id'],
-                'init_point': preference['init_point'],  # URL para redirecionar (desktop)
-                'sandbox_init_point': preference['sandbox_init_point'],  # URL de teste
+                'init_point': preference['init_point'],
+                'sandbox_init_point': preference['sandbox_init_point'],
             }, status=status.HTTP_201_CREATED)
 
         except Pedido.DoesNotExist:
@@ -102,12 +99,52 @@ class PagamentoViewSet(viewsets.ModelViewSet):
     def webhook(self, request):
         """
         Webhook para receber notificações do Mercado Pago
+
+        IMPORTANTE: Configure no painel do MP:
+        - URL: https://seusite.com/api/v1/pagamentos/webhook/
+        - Eventos: payment, merchant_order
         """
-        # Mercado Pago envia o payment_id
-        payment_id = request.query_params.get('data.id') or request.data.get('data', {}).get('id')
+
+        # ===== VALIDAÇÃO DE SEGURANÇA =====
+        # Validar assinatura do Mercado Pago (OBRIGATÓRIO em produção)
+        x_signature = request.headers.get('x-signature')
+        x_request_id = request.headers.get('x-request-id')
+
+        if settings.MERCADO_PAGO_WEBHOOK_SECRET and x_signature:
+            # Validar assinatura HMAC
+            data_id = request.query_params.get('data.id', '')
+            expected_signature = hmac.new(
+                settings.MERCADO_PAGO_WEBHOOK_SECRET.encode(),
+                f"{x_request_id}{data_id}".encode(),
+                hashlib.sha256
+            ).hexdigest()
+
+            if not hmac.compare_digest(x_signature, expected_signature):
+                return Response(
+                    {'error': 'Assinatura inválida'},
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
+
+        # ===== OBTER PAYMENT ID =====
+        # Mercado Pago envia de várias formas
+        payment_id = None
+
+        # Formato 1: Query param
+        payment_id = request.query_params.get('data.id')
+
+        # Formato 2: Body JSON
+        if not payment_id and request.data:
+            payment_id = request.data.get('data', {}).get('id')
+
+        # Formato 3: ID direto
+        if not payment_id and request.data:
+            payment_id = request.data.get('id')
 
         if not payment_id:
-            return Response({'error': 'Payment ID não fornecido'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {'error': 'Payment ID não fornecido'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         try:
             # Buscar informações do pagamento no Mercado Pago
@@ -118,10 +155,21 @@ class PagamentoViewSet(viewsets.ModelViewSet):
             # Buscar pedido pela external_reference
             pedido_id = payment_data.get('external_reference')
             if not pedido_id:
-                return Response({'error': 'External reference não encontrada'}, status=status.HTTP_400_BAD_REQUEST)
+                return Response(
+                    {'error': 'External reference não encontrada'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
             pedido = Pedido.objects.get(id=pedido_id)
-            pagamento = pedido.pagamento
+
+            # CORREÇÃO: Buscar pagamento corretamente
+            try:
+                pagamento = Pagamento.objects.get(pedido=pedido)
+            except Pagamento.DoesNotExist:
+                return Response(
+                    {'error': 'Pagamento não encontrado'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
 
             # Atualizar dados do pagamento
             pagamento.payment_id = payment_id
@@ -135,19 +183,32 @@ class PagamentoViewSet(viewsets.ModelViewSet):
                 pedido.status = 'confirmado'
                 pedido.save()
 
-                # Aqui você pode enviar email de confirmação
-                # enviar_email_confirmacao(pedido)
+                # TODO: Enviar email de confirmação
+                # from .tasks import enviar_email_confirmacao
+                # enviar_email_confirmacao.delay(pedido.id)
 
             elif payment_data['status'] == 'rejected':
                 pedido.status = 'pagamento_rejeitado'
                 pedido.save()
 
+            elif payment_data['status'] in ['pending', 'in_process']:
+                pedido.status = 'aguardando_pagamento'
+                pedido.save()
+
             return Response({'status': 'ok'}, status=status.HTTP_200_OK)
 
         except Pedido.DoesNotExist:
-            return Response({'error': 'Pedido não encontrado'}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {'error': 'Pedido não encontrado'},
+                status=status.HTTP_404_NOT_FOUND
+            )
         except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            # Log do erro (adicione logging em produção)
+            print(f"Erro no webhook: {str(e)}")
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     @action(detail=True, methods=['get'])
     def status_pagamento(self, request, pk=None):
@@ -158,7 +219,6 @@ class PagamentoViewSet(viewsets.ModelViewSet):
             pagamento = self.get_object()
 
             if pagamento.payment_id:
-                # Consultar no Mercado Pago
                 sdk = mercadopago.SDK(settings.MERCADO_PAGO_ACCESS_TOKEN)
                 payment_info = sdk.payment().get(pagamento.payment_id)
                 payment_data = payment_info["response"]

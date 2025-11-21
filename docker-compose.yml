@@ -1,4 +1,3 @@
-
 services:
   # ==========================================
   # BANCO DE DADOS POSTGRESQL
@@ -15,7 +14,6 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
-
     networks:
       - relab_network
     healthcheck:
@@ -56,7 +54,7 @@ services:
       - relab_network
 
   # ==========================================
-  # FRONTEND REACT
+  # FRONTEND NEXT.JS
   # ==========================================
   frontend:
     build: ./relab_frontend
@@ -65,17 +63,19 @@ services:
     volumes:
       - ./relab_frontend:/app
       - /app/node_modules
+      - /app/.next
     ports:
       - "3000:3000"
     environment:
-      - REACT_APP_API_URL=http://localhost:8000
-      - CHOKIDAR_USEPOLLING=true
+      # CORRETO para Next.js
+      - NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
+      # Configuração do Next.js
+      - NODE_ENV=development
+      - WATCHPACK_POLLING=true
     depends_on:
       - backend
     networks:
       - relab_network
-    stdin_open: true
-    tty: true
 
 # ==========================================
 # VOLUMES (Dados Persistentes)

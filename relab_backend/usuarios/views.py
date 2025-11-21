@@ -15,14 +15,29 @@ from .serializers import (
     CustomTokenObtainPairSerializer,
 )
 
+
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
 
-class IsOwnerOrAdmin(permissions.BasePermission):
-    """
-    Permissão customizada: apenas o próprio usuário ou admin pode acessar
-    """
+    def post(self, request, *args, **kwargs):
+        response = super().post(request, *args, **kwargs)
 
+        if response.status_code == status.HTTP_200_OK:
+            user = Usuario.objects.get(email=request.data.get('email'))
+            response.data['user'] = {
+                'id': user.id,
+                'email': user.email,
+                'nome': user.get_full_name(),
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'tipo_usuario': user.tipo_usuario,
+                'foto_perfil': user.foto_perfil.url if user.foto_perfil else None,
+            }
+
+        return response
+
+
+class IsOwnerOrAdmin(permissions.BasePermission):
     def has_object_permission(self, request, view, obj):
         if request.user.is_staff or request.user.tipo_usuario == 'admin':
             return True
@@ -30,14 +45,9 @@ class IsOwnerOrAdmin(permissions.BasePermission):
 
 
 class UsuarioViewSet(viewsets.ModelViewSet):
-    """
-    ViewSet para gerenciamento de usuários
-    """
     queryset = Usuario.objects.filter(ativo=True)
-    permission_classes = [IsAuthenticated]
 
     def get_serializer_class(self):
-        """Retorna o serializer apropriado para cada ação"""
         if self.action == 'create':
             return UsuarioCreateSerializer
         elif self.action in ['update', 'partial_update']:
@@ -47,22 +57,15 @@ class UsuarioViewSet(viewsets.ModelViewSet):
         return UsuarioDetailSerializer
 
     def get_permissions(self):
-        """
-        Permite que qualquer um crie uma conta (registro),
-        mas requer autenticação para outras ações
-        """
+        # CADASTRO É PÚBLICO - qualquer um pode criar conta
         if self.action == 'create':
             return [AllowAny()]
-        elif self.action in ['update', 'partial_update', 'destroy']:
-            return [IsAuthenticated(), IsOwnerOrAdmin()]
         return [IsAuthenticated()]
 
     def get_queryset(self):
-        """
-        Usuários comuns só veem a si mesmos,
-        Admins veem todos
-        """
         user = self.request.user
+        if user.is_anonymous:
+            return Usuario.objects.none()
         if user.is_staff or user.tipo_usuario == 'admin':
             return Usuario.objects.all()
         return Usuario.objects.filter(pk=user.pk)
@@ -80,16 +83,11 @@ class UsuarioViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get', 'put', 'patch'])
     def me(self, request):
-        """
-        GET: Retorna dados do usuário autenticado
-        PUT/PATCH: Atualiza dados do usuário autenticado
-        """
         usuario = request.user
 
         if request.method == 'GET':
             usuario.ultimo_acesso = timezone.now()
             usuario.save(update_fields=['ultimo_acesso'])
-
             serializer = UsuarioDetailSerializer(usuario)
             return Response(serializer.data)
 
@@ -106,7 +104,6 @@ class UsuarioViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'])
     def alterar_senha(self, request):
-        """Endpoint para alterar senha do usuário autenticado"""
         serializer = AlterarSenhaSerializer(
             data=request.data,
             context={'request': request}
@@ -121,7 +118,6 @@ class UsuarioViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['delete'])
     def desativar_conta(self, request):
-        """Desativa a conta do usuário (soft delete)"""
         usuario = request.user
         usuario.ativo = False
         usuario.is_active = False
@@ -134,44 +130,31 @@ class UsuarioViewSet(viewsets.ModelViewSet):
 
 
 class EnderecoViewSet(viewsets.ModelViewSet):
-    """
-    ViewSet para gerenciamento de endereços do usuário
-    """
     serializer_class = EnderecoSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        """Retorna apenas os endereços do usuário autenticado"""
         return Endereco.objects.filter(
             usuario=self.request.user,
             ativo=True
         )
 
     def perform_create(self, serializer):
-        """Cria um endereço vinculado ao usuário autenticado"""
-        # Verifica se já tem endereços
         tem_enderecos = Endereco.objects.filter(
             usuario=self.request.user,
             ativo=True
         ).exists()
 
-        # Se não tem nenhum, marca como padrão automaticamente
         padrao = serializer.validated_data.get('padrao', False)
         if not tem_enderecos:
             padrao = True
 
         serializer.save(usuario=self.request.user, padrao=padrao)
 
-    def perform_update(self, serializer):
-        """Atualiza endereço"""
-        serializer.save()
-
     def perform_destroy(self, instance):
-        """Soft delete do endereço"""
         instance.ativo = False
         instance.save()
 
-        # Se era o padrão, marca outro como padrão
         if instance.padrao:
             outro_endereco = Endereco.objects.filter(
                 usuario=self.request.user,
@@ -184,16 +167,13 @@ class EnderecoViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def tornar_padrao(self, request, pk=None):
-        """Marca um endereço como padrão"""
         endereco = self.get_object()
 
-        # Desmarca todos os outros
         Endereco.objects.filter(
             usuario=request.user,
             padrao=True
         ).update(padrao=False)
 
-        # Marca este como padrão
         endereco.padrao = True
         endereco.save()
 
@@ -204,7 +184,6 @@ class EnderecoViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def padrao(self, request):
-        """Retorna o endereço padrão do usuário"""
         try:
             endereco = Endereco.objects.get(
                 usuario=request.user,
